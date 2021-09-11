@@ -39,8 +39,8 @@ num_classes = train_data['class'].nunique()
 classes = train_data[['class', 'label']].drop_duplicates().sort_values('class')['label'].tolist()
 print(classes)
 
-img_width, img_height = 384, 512
-res_img_width, res_img_height = 299, 299 
+img_height, img_width = 384, 512
+res_img_height, res_img_width = 299, 299 
 
 datagen_train = tf.keras.preprocessing.image.ImageDataGenerator(
         shear_range=0.1,
@@ -55,6 +55,7 @@ train_ds = datagen_train.flow_from_dataframe(
     x_col='path', 
     y_col='class',
     class_mode='categorical',
+    target_size=(img_height, img_width),
     color_mode='rgb',
     batch_size=32, 
     shuffle=True,
@@ -69,7 +70,7 @@ val_ds = datagen_eval.flow_from_dataframe(
     x_col='path', 
     y_col='class',
     class_mode='categorical',
-    target_size=(res_img_width, res_img_height), 
+    target_size=(img_height, img_width),
     color_mode='rgb',
     batch_size=32, 
     shuffle=False,
@@ -82,7 +83,7 @@ test_ds = datagen_eval.flow_from_dataframe(
     x_col='path', 
     y_col='class',
     class_mode='categorical',
-    target_size=(res_img_width, res_img_height), 
+    target_size=(img_height, img_width),
     color_mode='rgb',
     batch_size=32, 
     shuffle=False,
@@ -110,7 +111,7 @@ test_ds = datagen_eval.flow_from_dataframe(
 # for file in os.listdir(aug_dir):
 #     os.remove(os.path.join(aug_dir, file))
     
-# aug_factor = train_data['class'].value_counts().max() - train_data['class'].value_counts().min()
+# aug_factor = int(2*(train_data['class'].value_counts().max() - train_data['class'].value_counts().min()))
 # for x, y in trash_ds:
 #     gen = tf.keras.preprocessing.image.ImageDataGenerator(
 #         zoom_range=0.3,
@@ -155,7 +156,7 @@ test_ds = datagen_eval.flow_from_dataframe(
 # =======================
 
 # input
-input_ = tf.keras.layers.Input(name='input', shape=(res_img_width, res_img_height, 3,))
+input_ = tf.keras.layers.Input(name='input', shape=(img_height, img_width, 3,))
 # resize images
 x = tf.keras.layers.experimental.preprocessing.Resizing(res_img_height, res_img_width)(input_)
 # Rescale image values to [0, 1]
@@ -203,7 +204,7 @@ if not os.path.isdir(chkpt_dir): os.makedirs(chkpt_dir)
 
 callbacks = [
     tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1),
-    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_categorical_accuracy', patience=7, min_lr=1e-6, factor=0.1),
+    # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_categorical_accuracy', patience=7, min_lr=1e-6, factor=0.1, verbose=1),
     tf.keras.callbacks.ModelCheckpoint(chkpt_dir, monitor='val_categorical_accuracy', save_best_only=True)
 ]
 
@@ -213,8 +214,8 @@ results = model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks
 # unfreeze base model
 model.get_layer('xception').trainable = True
 # freeze classification head
-model.get_layer('dense_1').trainable = False
-model.get_layer('dense_2').trainable = False
+# model.get_layer('dense_1').trainable = False
+# model.get_layer('dense_2').trainable = False
 
 epochs = 2
 model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks=callbacks, class_weight=class_weights)
