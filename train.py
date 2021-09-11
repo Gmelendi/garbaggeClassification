@@ -203,7 +203,7 @@ if not os.path.isdir(chkpt_dir): os.makedirs(chkpt_dir)
 
 callbacks = [
     tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1),
-    # tf.keras.callbacks.ReduceLROnPlateau(monitor='val_categorical_accuracy', patience=8, min_lr=1e-6, factor=0.1),
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_categorical_accuracy', patience=7, min_lr=1e-6, factor=0.1),
     tf.keras.callbacks.ModelCheckpoint(chkpt_dir, monitor='val_categorical_accuracy', save_best_only=True)
 ]
 
