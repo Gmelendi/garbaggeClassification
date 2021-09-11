@@ -27,13 +27,13 @@ data['label'] = data['dir'].apply(os.path.split).str[-1]
 def load_data(file):
     data = pd.read_csv(file, sep=' ', header=None)
     data.columns = ['file', 'class']
-    data['class'] = data['class'].astype(str)
+    data['file'] = data['file'].str.replace('.npy', '.jpg')
+    data['class'] = (data['class'] - 1).astype(str)
     return data
 
-train_data = data.merge(load_data('data/zero-indexed-files.txt'), on=['file'], how='inner').sample(frac=1)
-train_data, val_data = train_test_split(train_data, test_size=0.15)
-train_data, test_data = train_test_split(train_data, test_size=0.15)
-
+train_data = data.merge(load_data('data/indexed-files-train.txt'), on=['file'], how='inner').sample(frac=1)
+val_data = data.merge(load_data('data/indexed-files-val.txt'), on=['file'], how='inner').sample(frac=1)
+test_data = data.merge(load_data('data/indexed-files-test.txt'), on=['file'], how='inner').sample(frac=1)
 
 num_classes = train_data['class'].nunique()
 classes = train_data[['class', 'label']].drop_duplicates().sort_values('class')['label'].tolist()
@@ -42,14 +42,12 @@ print(classes)
 img_width, img_height = 384, 512
 res_img_width, res_img_height = 299, 299 
 
-
 datagen_train = tf.keras.preprocessing.image.ImageDataGenerator(
         shear_range=0.1,
         zoom_range=0.2,
         horizontal_flip=True,
         vertical_flip=True,
         rotation_range=90,
-        preprocessing_function=preprocess_input
 )
 
 train_ds = datagen_train.flow_from_dataframe(
@@ -57,7 +55,6 @@ train_ds = datagen_train.flow_from_dataframe(
     x_col='path', 
     y_col='class',
     class_mode='categorical',
-    target_size=(res_img_width, res_img_height), 
     color_mode='rgb',
     batch_size=32, 
     shuffle=True,
@@ -65,9 +62,7 @@ train_ds = datagen_train.flow_from_dataframe(
 )
 
 
-datagen_eval = tf.keras.preprocessing.image.ImageDataGenerator(
-        preprocessing_function=preprocess_input
-)
+datagen_eval = tf.keras.preprocessing.image.ImageDataGenerator()
 
 val_ds = datagen_eval.flow_from_dataframe(
     val_data,  
@@ -149,7 +144,6 @@ train_ds = datagen_train.flow_from_dataframe(
     x_col='path', 
     y_col='class',
     class_mode='categorical',
-    target_size=(res_img_width, res_img_height), 
     color_mode='rgb',
     batch_size=32, 
     shuffle=True,
@@ -162,15 +156,20 @@ train_ds = datagen_train.flow_from_dataframe(
 
 # input
 input_ = tf.keras.layers.Input(name='input', shape=(res_img_width, res_img_height, 3,))
+# resize images
+x = tf.keras.layers.experimental.preprocessing.Resizing(res_img_height, res_img_width)(input_)
+# Rescale image values to [0, 1]
+x = tf.keras.applications.xception.preprocess_input(x)
+
 # base model
 base_model = tf.keras.applications.Xception(include_top=False, weights='imagenet')
 base_model.trainable = False
-x = base_model(input_, training=False)
+x = base_model(x, training=False)
 
 # classification head
 x = tf.keras.layers.GlobalAveragePooling2D()(x)
-x = tf.keras.layers.Dense(1024, activation='relu')(x)
-x = tf.keras.layers.Dense(512, activation='relu')(x)
+x = tf.keras.layers.Dense(1024, activation='relu', name='dense_1')(x)
+x = tf.keras.layers.Dense(512, activation='relu', name='dense_2')(x)
 
 # output
 output = tf.keras.layers.Dense(num_classes, activation='softmax')(x)
@@ -211,15 +210,18 @@ results = model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks
 
 # unfreeze base model
 model.get_layer('xception').trainable = True
+# freeze classification head
+model.get_layer('dense_1').trainable = False
+model.get_layer('dense_2').trainable = False
 
 epochs = 2
-results = model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks=callbacks, class_weight=class_weights)
+model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks=callbacks, class_weight=class_weights)
 
 # reduce lr
 model.optimizer.lr = 1e-4
 
 epochs = 2
-results = model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks=callbacks, class_weight=class_weights)
+model.fit(train_ds, epochs=epochs, validation_data=(val_ds), callbacks=callbacks, class_weight=class_weights)
 
 
 # =======================
